@@ -13,11 +13,11 @@ public sealed class LogAudioSink : IAudioSink
 
     public LogAudioSink(Action<string> log) => _log = log;
 
-    public void PlayOneShot(AudioCue cue)
-        => _log($"> [SFX] {cue.Asset} vol={cue.Volume:0.00} pitch={cue.Pitch:0.00}");
+    public void PlayOneShot(in AudioCue cue)
+        => _log($"> [SFX] {cue.AssetName} vol={cue.Volume:0.00} pitch={cue.Pitch:0.00}");
 
-    public void StartLoop(AudioCue cue, string loopKey)
-        => _log($"> [LOOP START:{loopKey}] {cue.Asset} vol={cue.Volume:0.00} pitch={cue.Pitch:0.00}");
+    public void StartLoop(in AudioCue cue, string loopKey)
+        => _log($"> [LOOP START:{loopKey}] {cue.AssetName} vol={cue.Volume:0.00} pitch={cue.Pitch:0.00}");
 
     public void StopLoop(string loopKey)
         => _log($"> [LOOP STOP:{loopKey}]");

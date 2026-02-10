@@ -3,6 +3,7 @@ using MouseTrainer.Core.Assets;
 using MouseTrainer.Core.Audio;
 using MouseTrainer.Core.Input;
 using MouseTrainer.Core.Simulation;
+using MouseTrainer.Core.Simulation.ReflexGates;
 
 namespace MouseTrainer.MauiHost;
 
@@ -20,14 +21,14 @@ public partial class MainPage : ContentPage
         InitializeComponent();
 
         // Deterministic foundation only:
-        _loop = new DeterministicLoop(new GameSimulation(), new DeterministicConfig
+        _loop = new DeterministicLoop(new ReflexGateSimulation(new ReflexGateConfig()), new DeterministicConfig
         {
             FixedHz = 60,
             MaxStepsPerFrame = 6,
             SessionSeed = 0xC0FFEEu
         });
 
-        _audio = new AudioDirector(AudioCueMap.Default, new LogAudioSink(AppendLog));
+        _audio = new AudioDirector(AudioCueMap.Default(), new LogAudioSink(AppendLog));
 
         _ = VerifyAssetsAsync();
         AppendLog($"> Host started. Stopwatch frequency: {Stopwatch.Frequency} ticks/sec");
@@ -92,14 +93,7 @@ public partial class MainPage : ContentPage
     private void StepOnce()
     {
         // Minimal pointer sample (no gameplay yet). In a real host you'd wire pointer events.
-        var input = new PointerInput
-        {
-            X = 0,
-            Y = 0,
-            LeftDown = false,
-            RightDown = false,
-            WheelDelta = 0
-        };
+        var input = new PointerInput(0f, 0f, false, false, _stopwatch.ElapsedTicks);
 
         var nowTicks = _stopwatch.ElapsedTicks;
         var result = _loop.Step(input, nowTicks, Stopwatch.Frequency);
