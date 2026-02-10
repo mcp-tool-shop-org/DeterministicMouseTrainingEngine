@@ -26,6 +26,10 @@ public static class NeonPalette
     public static readonly Color RedMagenta = Color.FromArgb("#FF1744");
     public static readonly Color RedDim     = Color.FromArgb("#FF1744").WithAlpha(0.4f);
 
+    // ── Ghost (amber, low alpha) ──────────────────────────
+    public static readonly Color Ghost     = Amber.WithAlpha(0.25f);
+    public static readonly Color GhostGlow = Amber.WithAlpha(0.10f);
+
     // ── Text ─────────────────────────────────────────────────
     public static readonly Color TextPrimary = Color.FromArgb("#E0E0E0");
     public static readonly Color TextDim     = Color.FromArgb("#666666");

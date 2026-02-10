@@ -44,6 +44,12 @@
                     BackgroundColor="#555" TextColor="White" />
             <Label x:Name="SeedLabel" Text="Seed: 0x00C0FFEE"
                    FontSize="12" TextColor="#888" VerticalOptions="Center" />
+            <Label Text="Race PB" FontSize="12" TextColor="#888"
+                   VerticalOptions="Center" Margin="16,0,0,0" />
+            <Switch x:Name="GhostSwitch" IsToggled="False"
+                    Toggled="OnGhostToggled"
+                    OnColor="#FFB300" ThumbColor="#DDD"
+                    VerticalOptions="Center" />
         </HorizontalStackLayout>
     </Grid>
 </ContentPage>

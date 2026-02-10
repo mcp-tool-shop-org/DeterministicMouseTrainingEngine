@@ -71,6 +71,12 @@ public sealed class RendererState
     }
     public readonly List<GateFlash> ActiveFlashes = new(4);
 
+    // ── Ghost (PB replay cursor) ──────────────────────────
+    public bool GhostActive;
+    public float GhostX;
+    public float GhostY;
+    public TrailBuffer? GhostTrail;
+
     // ── Stats (populated on session complete + ready screen) ──
     public PersonalBests? Bests;
     public LifetimeStats? Lifetime;
@@ -119,7 +125,9 @@ public sealed class GameRenderer : IDrawable
         DrawGates(canvas, shakeOx, shakeOy, cw, ch, scale);
         DrawGateFlashes(canvas, shakeOx, shakeOy, scale);
         _s.Particles?.Draw(canvas, shakeOx, shakeOy, scale);
+        DrawGhostTrail(canvas, shakeOx, shakeOy, scale);
         DrawCursorTrail(canvas, shakeOx, shakeOy, scale);
+        DrawGhostCursor(canvas, shakeOx, shakeOy, scale);
         DrawCursor(canvas, shakeOx, shakeOy, scale);
         DrawHud(canvas, ox, oy, cw, ch, scale); // HUD never shaken
     }
@@ -617,6 +625,69 @@ public sealed class GameRenderer : IDrawable
 
         // Core dot
         canvas.FillColor = _s.PrimaryDown ? NeonPalette.Lime : NeonPalette.Cyan;
+        canvas.FillCircle(cx, cy, 4);
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  Playing: Layer 7.5 — Ghost trail (PB replay)
+    // ══════════════════════════════════════════════════════
+
+    private void DrawGhostTrail(ICanvas canvas, float ox, float oy, float scale)
+    {
+        if (!_s.GhostActive) return;
+
+        var trail = _s.GhostTrail;
+        if (trail == null || trail.Count < 2) return;
+
+        float currentTime = _s.SimTime;
+        const float maxAge = 0.25f;
+
+        for (int i = 1; i < trail.Count; i++)
+        {
+            var prev = trail.GetByAge(i - 1);
+            var curr = trail.GetByAge(i);
+
+            float age = currentTime - curr.Time;
+            if (age > maxAge || age < 0f) continue;
+
+            float ageFactor = 1f - (age / maxAge);
+
+            // Thickness: newest=2, oldest=0.5
+            float thickness = 0.5f + ageFactor * 1.5f;
+
+            // Speed-based brightness boost (same formula, lower ceiling)
+            float dx = curr.X - prev.X;
+            float dy = curr.Y - prev.Y;
+            float speed = MathF.Sqrt(dx * dx + dy * dy);
+            float speedBoost = MathF.Min(speed * 0.002f, 0.15f);
+
+            float alpha = ageFactor * 0.3f + speedBoost;
+
+            canvas.StrokeSize = thickness;
+            canvas.StrokeColor = NeonPalette.Ghost.WithAlpha(alpha);
+            canvas.DrawLine(
+                ox + prev.X * scale, oy + prev.Y * scale,
+                ox + curr.X * scale, oy + curr.Y * scale);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  Playing: Layer 8.5 — Ghost cursor (PB replay)
+    // ══════════════════════════════════════════════════════
+
+    private void DrawGhostCursor(ICanvas canvas, float ox, float oy, float scale)
+    {
+        if (!_s.GhostActive) return;
+
+        float cx = ox + _s.GhostX * scale;
+        float cy = oy + _s.GhostY * scale;
+
+        // Outer glow (amber, very dim)
+        canvas.FillColor = NeonPalette.GhostGlow;
+        canvas.FillCircle(cx, cy, 12);
+
+        // Core dot (amber, low alpha)
+        canvas.FillColor = NeonPalette.Ghost;
         canvas.FillCircle(cx, cy, 4);
     }
 

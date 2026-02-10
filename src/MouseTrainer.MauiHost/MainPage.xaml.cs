@@ -7,6 +7,7 @@ using MouseTrainer.Domain.Runs;
 using MouseTrainer.Simulation.Core;
 using MouseTrainer.Simulation.Modes.ReflexGates;
 using MouseTrainer.Simulation.Mutators;
+using MouseTrainer.Simulation.Replay;
 using MouseTrainer.Simulation.Session;
 using Plugin.Maui.Audio;
 
@@ -35,6 +36,14 @@ public partial class MainPage : ContentPage
 
     // --- Persistence ---
     private readonly SessionStore _store;
+
+    // --- Replay recording & ghost playback ---
+    private readonly string _replayDir;
+    private readonly GhostPlayback _ghost = new();
+    private readonly TrailBuffer _ghostTrailBuffer = new(8);
+    private ReplayRecorder? _recorder;
+    private long _prevTick;
+    private bool _ghostEnabled;
 
     private readonly ReflexGateGenerator _generator;
     private readonly MutatorPipeline _mutatorPipeline;
@@ -80,6 +89,10 @@ public partial class MainPage : ContentPage
         _sink = new MauiAudioSink(AudioManager.Current, log: AppendLog);
         _audio = new AudioDirector(AudioCueMap.Default(), _sink);
         _store = new SessionStore(log: AppendLog);
+
+        _replayDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MouseTrainer", "replays", "pb");
 
         // Wire effects systems into renderer state
         _overlayState.Trail = _trailBuffer;
@@ -205,6 +218,12 @@ public partial class MainPage : ContentPage
         ResetSession(_currentSeed);
     }
 
+    private void OnGhostToggled(object sender, ToggledEventArgs e)
+    {
+        _ghostEnabled = e.Value;
+        AppendLog($"> Race PB: {(_ghostEnabled ? "ON" : "OFF")}");
+    }
+
     private void StartSession()
     {
         _currentRun = RunDescriptor.Create(ModeId.ReflexGates, _currentSeed);
@@ -213,11 +232,30 @@ public partial class MainPage : ContentPage
         _session.Start();
 
         _frame = 0;
+        _prevTick = 0;
         _liveGateResults.Clear();
         _trailBuffer.Clear();
         _particles.Clear();
         _shake.Clear();
         _overlayState.ActiveFlashes.Clear();
+
+        // Start replay recording
+        _recorder = new ReplayRecorder();
+
+        // Load ghost (PB replay) if enabled
+        _ghostTrailBuffer.Clear();
+        _overlayState.GhostTrail = _ghostTrailBuffer;
+        _overlayState.GhostActive = false;
+
+        if (_ghostEnabled)
+        {
+            if (_ghost.TryLoad(_currentRun.Id, _replayDir, AppendLog))
+            {
+                _ghost.Reset();
+                _overlayState.GhostActive = true;
+                AppendLog("> Ghost loaded — racing your PB.");
+            }
+        }
 
         _timer = Dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
@@ -256,6 +294,12 @@ public partial class MainPage : ContentPage
         _particles.Clear();
         _shake.Clear();
         _overlayState.ActiveFlashes.Clear();
+
+        // Clean up replay/ghost state
+        _recorder = null;
+        _ghost.Disable();
+        _ghostTrailBuffer.Clear();
+        _overlayState.GhostActive = false;
 
         _overlayState.SessionPhase = SessionState.Ready;
         _overlayState.Seed = seed;
@@ -357,6 +401,32 @@ public partial class MainPage : ContentPage
         var nowTicks = _stopwatch.ElapsedTicks;
         var result = _loop.Step(input, nowTicks, Stopwatch.Frequency);
 
+        // Recording: capture input for each tick advanced
+        int ticksAdvanced = (int)(result.Tick - _prevTick);
+        _prevTick = result.Tick;
+
+        if (_recorder != null && ticksAdvanced > 0)
+        {
+            for (int i = 0; i < ticksAdvanced; i++)
+                _recorder.RecordTick(input);
+        }
+
+        // Ghost playback: advance in lockstep with sim ticks
+        if (_ghost.Active && ticksAdvanced > 0)
+        {
+            _ghost.AdvanceTicks(ticksAdvanced);
+            _overlayState.GhostX = _ghost.X;
+            _overlayState.GhostY = _ghost.Y;
+            _overlayState.GhostActive = _ghost.Active;
+
+            float simTimeNow = result.Tick * (1f / _fixedHz);
+            _ghostTrailBuffer.Push(_ghost.X, _ghost.Y, simTimeNow);
+        }
+        else if (!_ghost.Active)
+        {
+            _overlayState.GhostActive = false;
+        }
+
         float simTime = result.Tick * (1f / _fixedHz);
         float dt = 1f / _fixedHz;
 
@@ -417,14 +487,34 @@ public partial class MainPage : ContentPage
 
                 _overlayState.SessionPhase = SessionState.Results;
                 _overlayState.LastResult = _session.GetResult();
+                _overlayState.GhostActive = false;
+
+                // Finalize replay recording and save PB if better
+                if (_overlayState.LastResult is { } finalResult && _recorder != null)
+                {
+                    if (finalResult.EventHash is { } eventHash)
+                    {
+                        try
+                        {
+                            var envelope = _recorder.Finalize(
+                                _currentRun, _fixedHz, finalResult, eventHash);
+                            SavePbIfBetter(envelope);
+                        }
+                        catch (Exception ex)
+                        {
+                            AppendLog($"> Replay finalize failed: {ex.Message}");
+                        }
+                    }
+                    _recorder = null;
+                }
 
                 // Persist session + load PBs for results screen
-                if (_overlayState.LastResult is { } finalResult)
+                if (_overlayState.LastResult is { } finalResult2)
                 {
                     // Get PBs *before* saving so "new record" detection works correctly
                     _overlayState.Bests = _store.GetPersonalBests(currentSeed: _currentSeed);
                     _overlayState.Lifetime = _store.GetLifetimeStats();
-                    _ = _store.SaveSessionAsync(finalResult);
+                    _ = _store.SaveSessionAsync(finalResult2);
                 }
 
                 ActionButton.Text = "Retry";
@@ -473,6 +563,53 @@ public partial class MainPage : ContentPage
 
         if (_frame % 60 == 0)
             AppendLog($"> tick={result.Tick} Y={_latestY:0} score={_session.TotalScore} combo={_session.CurrentCombo}");
+    }
+
+    // ------------------------------------------------------------------
+    //  Replay PB storage
+    // ------------------------------------------------------------------
+
+    private string GetPbPath(RunId runId)
+        => Path.Combine(_replayDir, $"{runId}.mtr");
+
+    private void SavePbIfBetter(ReplayEnvelope envelope)
+    {
+        try
+        {
+            string path = GetPbPath(envelope.RunId);
+            int existingScore = int.MinValue;
+
+            if (File.Exists(path))
+            {
+                try
+                {
+                    using var fs = File.OpenRead(path);
+                    var existing = ReplaySerializer.Read(fs);
+                    existingScore = existing.FinalScore;
+                }
+                catch
+                {
+                    // Corrupt PB file — overwrite it
+                    existingScore = int.MinValue;
+                }
+            }
+
+            if (envelope.FinalScore > existingScore)
+            {
+                Directory.CreateDirectory(_replayDir);
+                using var ws = File.Create(path);
+                ReplaySerializer.Write(envelope, ws);
+                AppendLog($"> PB saved! Score={envelope.FinalScore} → {path}");
+            }
+            else
+            {
+                AppendLog($"> Score {envelope.FinalScore} did not beat PB {existingScore}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"> PB save failed: {ex.Message}");
+        }
     }
 
     // ------------------------------------------------------------------
