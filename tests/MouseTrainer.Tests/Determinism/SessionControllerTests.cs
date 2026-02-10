@@ -1,4 +1,5 @@
 using MouseTrainer.Domain.Events;
+using MouseTrainer.Domain.Runs;
 using MouseTrainer.Simulation.Session;
 using Xunit;
 
@@ -393,6 +394,58 @@ public class SessionControllerTests
         Assert.Equal(0, sc.TotalScore);
         Assert.Equal(0, sc.CurrentCombo);
         Assert.Equal(SessionState.Playing, sc.State);
+    }
+
+    // ─────────────────────────────────────────────────────
+    //  8. RunDescriptor integration
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void ResetToReady_WithRunDescriptor_StoresSeedAndRunId()
+    {
+        var sc = new SessionController();
+        var run = RunDescriptor.Create(ModeId.ReflexGates, 0xC0FFEEu);
+
+        sc.ResetToReady(run, 12);
+
+        Assert.Equal(0xC0FFEEu, sc.Seed);
+        Assert.NotNull(sc.RunDescriptor);
+        Assert.Equal(run, sc.RunDescriptor.Value);
+        Assert.Equal(run.Id, sc.RunDescriptor.Value.Id);
+    }
+
+    [Fact]
+    public void GetResult_WithRunDescriptor_IncludesRunId()
+    {
+        var sc = new SessionController();
+        var run = RunDescriptor.Create(ModeId.ReflexGates, 0xC0FFEEu);
+        sc.ResetToReady(run, 12);
+        sc.Start();
+
+        sc.ApplyEvents(new List<GameEvent>
+        {
+            new(GameEventType.LevelComplete, Intensity: 1f, Arg0: 0, Arg1: 0)
+        });
+
+        var result = sc.GetResult();
+        Assert.NotNull(result);
+        Assert.NotNull(result.RunId);
+        Assert.Equal(run.Id, result.RunId.Value);
+    }
+
+    [Fact]
+    public void GetResult_WithoutRunDescriptor_RunIdIsNull()
+    {
+        var sc = CreatePlayingSession(); // Uses old ResetToReady(uint, int)
+
+        sc.ApplyEvents(new List<GameEvent>
+        {
+            new(GameEventType.LevelComplete, Intensity: 1f, Arg0: 0, Arg1: 0)
+        });
+
+        var result = sc.GetResult();
+        Assert.NotNull(result);
+        Assert.Null(result.RunId);
     }
 
     // ─────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MouseTrainer.Domain.Runs;
 using MouseTrainer.Simulation.Session;
 
 namespace MouseTrainer.MauiHost;
@@ -11,7 +12,7 @@ namespace MouseTrainer.MauiHost;
 /// </summary>
 public sealed class SessionStore
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
 
     private readonly string _filePath;
     private readonly object _lock = new();
@@ -308,7 +309,8 @@ public sealed class SessionStore
             GatesTotal: r.GatesTotal,
             MeanOffset: meanOffset,
             WorstOffset: worstOffset,
-            Gates: gates);
+            Gates: gates,
+            RunId: r.RunId?.ToString());
     }
 
     // ─────────────────────────────────────────────────────
@@ -317,9 +319,20 @@ public sealed class SessionStore
 
     private static void MigrateIfNeeded(StatsFile data)
     {
-        // Version 1 is the initial schema — no migration needed yet.
-        // Future migrations would go here:
-        // if (data.SchemaVersion < 2) { ... data.SchemaVersion = 2; }
+        // v1 → v2: Backfill RunId for legacy sessions
+        if (data.SchemaVersion < 2)
+        {
+            for (int i = 0; i < data.Sessions.Count; i++)
+            {
+                var s = data.Sessions[i];
+                if (s.RunId == null)
+                {
+                    var run = RunDescriptor.Create(ModeId.ReflexGates, s.Seed);
+                    data.Sessions[i] = s with { RunId = run.Id.ToString() };
+                }
+            }
+        }
+
         data.SchemaVersion = CurrentSchemaVersion;
     }
 

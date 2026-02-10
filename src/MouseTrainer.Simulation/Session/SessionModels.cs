@@ -1,3 +1,5 @@
+using MouseTrainer.Domain.Runs;
+
 namespace MouseTrainer.Simulation.Session;
 
 /// <summary>
@@ -30,4 +32,5 @@ public sealed record SessionResult(
     int MaxCombo,
     int GatesPassed,
     int GatesTotal,
-    IReadOnlyList<GateResult> Gates);
+    IReadOnlyList<GateResult> Gates,
+    RunId? RunId = null);

@@ -3,6 +3,7 @@ using MouseTrainer.Audio.Assets;
 using MouseTrainer.Audio.Core;
 using MouseTrainer.Domain.Events;
 using MouseTrainer.Domain.Input;
+using MouseTrainer.Domain.Runs;
 using MouseTrainer.Simulation.Core;
 using MouseTrainer.Simulation.Modes.ReflexGates;
 using MouseTrainer.Simulation.Session;
@@ -34,9 +35,11 @@ public partial class MainPage : ContentPage
     // --- Persistence ---
     private readonly SessionStore _store;
 
+    private readonly ReflexGateGenerator _generator;
     private IDispatcherTimer? _timer;
     private long _frame;
     private uint _currentSeed = 0xC0FFEEu;
+    private RunDescriptor _currentRun;
 
     // --- Pointer state (sampled by host, consumed by sim) ---
     private float _latestX;
@@ -53,6 +56,8 @@ public partial class MainPage : ContentPage
         var cfg = new ReflexGateConfig();
         _gateCount = cfg.GateCount;
         _sim = new ReflexGateSimulation(cfg);
+        _generator = new ReflexGateGenerator(cfg);
+        _currentRun = RunDescriptor.Create(ModeId.ReflexGates, _currentSeed);
         _loop = new DeterministicLoop(_sim, new DeterministicConfig
         {
             FixedHz = _fixedHz,
@@ -73,7 +78,7 @@ public partial class MainPage : ContentPage
         AttachPointerInput();
 
         // Initialize session to Ready
-        _session.ResetToReady(_currentSeed, _gateCount);
+        _session.ResetToReady(_currentRun, _gateCount);
         _overlayState.SessionPhase = SessionState.Ready;
         _overlayState.Seed = _currentSeed;
         PopulateGatesAtRest();
@@ -184,13 +189,15 @@ public partial class MainPage : ContentPage
     {
         StopTimer();
         _currentSeed = (uint)Environment.TickCount;
+        _currentRun = RunDescriptor.Create(ModeId.ReflexGates, _currentSeed);
         ResetSession(_currentSeed);
     }
 
     private void StartSession()
     {
+        _currentRun = RunDescriptor.Create(ModeId.ReflexGates, _currentSeed);
         _loop.Reset(_currentSeed);
-        _session.ResetToReady(_currentSeed, _gateCount);
+        _session.ResetToReady(_currentRun, _gateCount);
         _session.Start();
 
         _frame = 0;
@@ -228,7 +235,8 @@ public partial class MainPage : ContentPage
         _sink.StopLoop("amb");
 
         _currentSeed = seed;
-        _session.ResetToReady(seed, _gateCount);
+        _currentRun = RunDescriptor.Create(ModeId.ReflexGates, seed);
+        _session.ResetToReady(_currentRun, _gateCount);
         _loop.Reset(seed);
 
         _liveGateResults.Clear();

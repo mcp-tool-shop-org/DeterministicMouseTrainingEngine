@@ -15,7 +15,8 @@ public sealed record StoredSession(
     int GatesTotal,
     float MeanOffset,
     float WorstOffset,
-    IReadOnlyList<StoredGateResult> Gates);
+    IReadOnlyList<StoredGateResult> Gates,
+    string? RunId = null);
 
 /// <summary>
 /// Per-gate outcome stored alongside each session.

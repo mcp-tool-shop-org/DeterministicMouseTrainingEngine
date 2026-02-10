@@ -2,6 +2,7 @@ using MouseTrainer.Domain.Events;
 using MouseTrainer.Domain.Input;
 using MouseTrainer.Simulation.Core;
 using MouseTrainer.Simulation.Debug;
+using MouseTrainer.Simulation.Levels;
 using MouseTrainer.Domain.Utility;
 
 namespace MouseTrainer.Simulation.Modes.ReflexGates;
@@ -39,6 +40,25 @@ public sealed class ReflexGateSimulation : IGameSimulation, ISimDebugOverlay
     public void Reset(uint sessionSeed)
     {
         _gates = GenerateGates(sessionSeed);
+        _nextGateIndex = 0;
+        _scrollPosition = 0f;
+        _comboStreak = 0;
+        _totalScore = 0;
+        _levelComplete = false;
+        _startTick = -1;
+    }
+
+    /// <summary>
+    /// Reset from a pre-generated blueprint. Avoids re-generating gates.
+    /// Produces identical simulation state to Reset(uint) when the blueprint
+    /// was generated from the same seed + config.
+    /// </summary>
+    public void Reset(LevelBlueprint blueprint)
+    {
+        _gates = new Gate[blueprint.Gates.Count];
+        for (int i = 0; i < blueprint.Gates.Count; i++)
+            _gates[i] = blueprint.Gates[i];
+
         _nextGateIndex = 0;
         _scrollPosition = 0f;
         _comboStreak = 0;

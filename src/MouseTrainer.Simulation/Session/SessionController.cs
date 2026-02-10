@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MouseTrainer.Domain.Events;
+using MouseTrainer.Domain.Runs;
 
 namespace MouseTrainer.Simulation.Session;
 
@@ -18,6 +19,7 @@ public sealed class SessionController
     private int _currentCombo;
     private int _totalScore;
     private readonly List<GateResult> _gateResults = new(capacity: 16);
+    private RunDescriptor? _runDescriptor;
 
     public SessionState State => _state;
     public uint Seed => _seed;
@@ -25,6 +27,7 @@ public sealed class SessionController
     public int CurrentCombo => _currentCombo;
     public int MaxCombo => _maxCombo;
     public TimeSpan Elapsed => _elapsed.Elapsed;
+    public RunDescriptor? RunDescriptor => _runDescriptor;
 
     /// <summary>
     /// Reset to Ready state with the given seed and gate count.
@@ -34,6 +37,23 @@ public sealed class SessionController
         _state = SessionState.Ready;
         _seed = seed;
         _gatesTotal = gatesTotal;
+        _runDescriptor = null;
+        _elapsed.Reset();
+        _maxCombo = 0;
+        _currentCombo = 0;
+        _totalScore = 0;
+        _gateResults.Clear();
+    }
+
+    /// <summary>
+    /// Reset to Ready state with a full RunDescriptor for identity tracking.
+    /// </summary>
+    public void ResetToReady(RunDescriptor run, int gatesTotal)
+    {
+        _state = SessionState.Ready;
+        _seed = run.Seed;
+        _gatesTotal = gatesTotal;
+        _runDescriptor = run;
         _elapsed.Reset();
         _maxCombo = 0;
         _currentCombo = 0;
@@ -125,6 +145,7 @@ public sealed class SessionController
             _maxCombo,
             gatesPassed,
             _gatesTotal,
-            _gateResults.AsReadOnly());
+            _gateResults.AsReadOnly(),
+            _runDescriptor?.Id);
     }
 }
