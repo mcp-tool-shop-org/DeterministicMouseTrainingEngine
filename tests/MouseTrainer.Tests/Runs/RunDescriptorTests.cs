@@ -175,4 +175,169 @@ public class RunDescriptorTests
         Assert.Equal(2, run.RulesetVersion);
         Assert.NotEqual(default, run.Id);
     }
+
+    // ─────────────────────────────────────────────────────
+    //  12. Empty mutator list = same golden hash (backward compat)
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Create_EmptyMutators_SameGoldenHash()
+    {
+        var run = RunDescriptor.Create(
+            ModeId.ReflexGates,
+            seed: 0xC0FFEEu,
+            DifficultyTier.Standard,
+            generatorVersion: 1,
+            rulesetVersion: 1,
+            mutators: Array.Empty<MutatorSpec>());
+
+        Assert.Equal(0xA185D3974C936996UL, run.Id.Value);
+    }
+
+    [Fact]
+    public void Create_NullMutators_SameGoldenHash()
+    {
+        var run = RunDescriptor.Create(
+            ModeId.ReflexGates,
+            seed: 0xC0FFEEu,
+            DifficultyTier.Standard,
+            generatorVersion: 1,
+            rulesetVersion: 1,
+            mutators: null);
+
+        Assert.Equal(0xA185D3974C936996UL, run.Id.Value);
+    }
+
+    // ─────────────────────────────────────────────────────
+    //  13. Mutators change hash
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Create_WithMutators_DifferentHash()
+    {
+        var noMutators = RunDescriptor.Create(ModeId.ReflexGates, 0xC0FFEEu);
+        var withMutators = RunDescriptor.Create(
+            ModeId.ReflexGates, 0xC0FFEEu,
+            mutators: new[] { MutatorSpec.Create(MutatorId.NarrowMargin) });
+
+        Assert.NotEqual(noMutators.Id, withMutators.Id);
+    }
+
+    // ─────────────────────────────────────────────────────
+    //  14. Mutator order affects hash
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Create_DifferentMutatorOrder_DifferentHash()
+    {
+        var ab = RunDescriptor.Create(
+            ModeId.ReflexGates, 0xC0FFEEu,
+            mutators: new[]
+            {
+                MutatorSpec.Create(MutatorId.NarrowMargin),
+                MutatorSpec.Create(MutatorId.DifficultyCurve),
+            });
+
+        var ba = RunDescriptor.Create(
+            ModeId.ReflexGates, 0xC0FFEEu,
+            mutators: new[]
+            {
+                MutatorSpec.Create(MutatorId.DifficultyCurve),
+                MutatorSpec.Create(MutatorId.NarrowMargin),
+            });
+
+        Assert.NotEqual(ab.Id, ba.Id);
+    }
+
+    // ─────────────────────────────────────────────────────
+    //  15. Same mutators = same hash (deterministic)
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Create_SameMutators_SameHash()
+    {
+        var a = RunDescriptor.Create(
+            ModeId.ReflexGates, 0xC0FFEEu,
+            mutators: new[]
+            {
+                MutatorSpec.Create(MutatorId.NarrowMargin,
+                    parameters: new[] { new MutatorParam("factor", 0.8f) }),
+            });
+
+        var b = RunDescriptor.Create(
+            ModeId.ReflexGates, 0xC0FFEEu,
+            mutators: new[]
+            {
+                MutatorSpec.Create(MutatorId.NarrowMargin,
+                    parameters: new[] { new MutatorParam("factor", 0.8f) }),
+            });
+
+        Assert.Equal(a.Id, b.Id);
+    }
+
+    // ─────────────────────────────────────────────────────
+    //  16. Golden hash with known mutators (frozen)
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Create_KnownMutators_ProducesStableHash()
+    {
+        // NarrowMargin v1, no params
+        var run = RunDescriptor.Create(
+            ModeId.ReflexGates,
+            seed: 0xC0FFEEu,
+            DifficultyTier.Standard,
+            generatorVersion: 1,
+            rulesetVersion: 1,
+            mutators: new[] { MutatorSpec.Create(MutatorId.NarrowMargin) });
+
+        // Frozen golden value — if this breaks, ALL mutator-bearing RunIds are invalid.
+        Assert.Equal(0x855A5B939E8ABC2FUL, run.Id.Value);
+    }
+
+    [Fact]
+    public void Create_KnownMutatorsWithParam_ProducesStableHash()
+    {
+        // NarrowMargin v1, factor=0.8
+        var run = RunDescriptor.Create(
+            ModeId.ReflexGates,
+            seed: 0xC0FFEEu,
+            DifficultyTier.Standard,
+            generatorVersion: 1,
+            rulesetVersion: 1,
+            mutators: new[]
+            {
+                MutatorSpec.Create(MutatorId.NarrowMargin,
+                    parameters: new[] { new MutatorParam("factor", 0.8f) }),
+            });
+
+        // Frozen golden value.
+        Assert.Equal(0x4A7FB94F7D50A251UL, run.Id.Value);
+    }
+
+    // ─────────────────────────────────────────────────────
+    //  17. Mutators field is populated
+    // ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Create_WithMutators_PopulatesMutatorsField()
+    {
+        var specs = new[]
+        {
+            MutatorSpec.Create(MutatorId.NarrowMargin,
+                parameters: new[] { new MutatorParam("factor", 0.8f) }),
+        };
+
+        var run = RunDescriptor.Create(ModeId.ReflexGates, 0xC0FFEEu, mutators: specs);
+
+        Assert.Single(run.Mutators);
+        Assert.Equal(MutatorId.NarrowMargin, run.Mutators[0].Id);
+    }
+
+    [Fact]
+    public void Create_NoMutators_EmptyList()
+    {
+        var run = RunDescriptor.Create(ModeId.ReflexGates, 0xC0FFEEu);
+        Assert.Empty(run.Mutators);
+    }
 }

@@ -6,6 +6,7 @@ using MouseTrainer.Domain.Input;
 using MouseTrainer.Domain.Runs;
 using MouseTrainer.Simulation.Core;
 using MouseTrainer.Simulation.Modes.ReflexGates;
+using MouseTrainer.Simulation.Mutators;
 using MouseTrainer.Simulation.Session;
 using Plugin.Maui.Audio;
 
@@ -36,6 +37,7 @@ public partial class MainPage : ContentPage
     private readonly SessionStore _store;
 
     private readonly ReflexGateGenerator _generator;
+    private readonly MutatorPipeline _mutatorPipeline;
     private IDispatcherTimer? _timer;
     private long _frame;
     private uint _currentSeed = 0xC0FFEEu;
@@ -57,6 +59,13 @@ public partial class MainPage : ContentPage
         _gateCount = cfg.GateCount;
         _sim = new ReflexGateSimulation(cfg);
         _generator = new ReflexGateGenerator(cfg);
+
+        var mutatorRegistry = new MutatorRegistry();
+        mutatorRegistry.Register(MutatorId.NarrowMargin, 1, spec => new NarrowMarginMutator(spec));
+        mutatorRegistry.Register(MutatorId.WideMargin, 1, spec => new WideMarginMutator(spec));
+        mutatorRegistry.Register(MutatorId.DifficultyCurve, 1, spec => new DifficultyCurveMutator(spec));
+        _mutatorPipeline = new MutatorPipeline(mutatorRegistry);
+
         _currentRun = RunDescriptor.Create(ModeId.ReflexGates, _currentSeed);
         _loop = new DeterministicLoop(_sim, new DeterministicConfig
         {
