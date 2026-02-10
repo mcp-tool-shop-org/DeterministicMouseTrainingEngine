@@ -1,4 +1,4 @@
-using MouseTrainer.Core.Audio;
+using MouseTrainer.Audio.Core;
 
 namespace MouseTrainer.MauiHost;
 

@@ -1,10 +1,10 @@
 using System.Diagnostics;
-using MouseTrainer.Core.Assets;
-using MouseTrainer.Core.Audio;
-using MouseTrainer.Core.Input;
-using MouseTrainer.Core.Simulation;
-using MouseTrainer.Core.Simulation.Debug;
-using MouseTrainer.Core.Simulation.ReflexGates;
+using MouseTrainer.Audio.Assets;
+using MouseTrainer.Audio.Core;
+using MouseTrainer.Domain.Input;
+using MouseTrainer.Simulation.Core;
+using MouseTrainer.Simulation.Debug;
+using MouseTrainer.Simulation.Modes.ReflexGates;
 
 namespace MouseTrainer.MauiHost;
 

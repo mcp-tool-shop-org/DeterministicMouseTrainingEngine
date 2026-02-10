@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MouseTrainer.Domain\MouseTrainer.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
