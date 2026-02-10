@@ -6,6 +6,7 @@ using MouseTrainer.Simulation.Core;
 using MouseTrainer.Simulation.Debug;
 using MouseTrainer.Simulation.Modes.ReflexGates;
 using MouseTrainer.Simulation.Session;
+using Plugin.Maui.Audio;
 
 namespace MouseTrainer.MauiHost;
 
@@ -13,6 +14,7 @@ public partial class MainPage : ContentPage
 {
     private readonly ReflexGateSimulation _sim;
     private readonly DeterministicLoop _loop;
+    private readonly MauiAudioSink _sink;
     private readonly AudioDirector _audio;
     private readonly SessionController _session = new();
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
@@ -47,7 +49,8 @@ public partial class MainPage : ContentPage
             SessionSeed = _currentSeed
         });
 
-        _audio = new AudioDirector(AudioCueMap.Default(), new LogAudioSink(AppendLog));
+        _sink = new MauiAudioSink(AudioManager.Current, log: AppendLog);
+        _audio = new AudioDirector(AudioCueMap.Default(), _sink);
 
         OverlayView.Drawable = new DebugOverlayDrawable(_overlayState);
         AttachPointerInput();
@@ -187,6 +190,9 @@ public partial class MainPage : ContentPage
         _overlayState.HasGate = false;
         _overlayState.LastResult = null;
 
+        // Start ambient music loop
+        _sink.StartLoop(new AudioCue("amb_zen_loop.wav", Volume: 0.25f, Loop: true), "amb");
+
         ActionButton.Text = "Playing...";
         ActionButton.IsEnabled = false;
         ActionButton.BackgroundColor = Color.FromArgb("#666666");
@@ -199,6 +205,7 @@ public partial class MainPage : ContentPage
     private void ResetSession(uint seed)
     {
         StopTimer();
+        _sink.StopLoop("amb");
 
         _currentSeed = seed;
         _session.ResetToReady(seed, _gateCount);
@@ -248,8 +255,9 @@ public partial class MainPage : ContentPage
 
             if (transitioned)
             {
-                // Session complete — stop the loop, show results
+                // Session complete — stop the loop and ambient, show results
                 StopTimer();
+                _sink.StopLoop("amb");
 
                 _overlayState.SessionPhase = SessionState.Results;
                 _overlayState.LastResult = _session.GetResult();

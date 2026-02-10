@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Plugin.Maui.Audio" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#1B1E28" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#1B1E28" BaseSize="128,128" />
     <MauiImage Include="Resources\Images\*.*" />
