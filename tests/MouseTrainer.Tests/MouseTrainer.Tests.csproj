@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MouseTrainer.Domain\MouseTrainer.Domain.csproj" />
+    <ProjectReference Include="..\..\src\MouseTrainer.Simulation\MouseTrainer.Simulation.csproj" />
+    <ProjectReference Include="..\..\src\MouseTrainer.Audio\MouseTrainer.Audio.csproj" />
+  </ItemGroup>
+
+  <!-- Compile-link MauiHost persistence files (can't reference MAUI project from net8.0) -->
+  <ItemGroup>
+    <Compile Include="..\..\src\MouseTrainer.MauiHost\SessionStore.cs" Link="Linked\SessionStore.cs" />
+    <Compile Include="..\..\src\MouseTrainer.MauiHost\StatsModels.cs" Link="Linked\StatsModels.cs" />
+  </ItemGroup>
+
+</Project>
