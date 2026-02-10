@@ -70,6 +70,10 @@ public sealed class RendererState
         public Color Color;
     }
     public readonly List<GateFlash> ActiveFlashes = new(4);
+
+    // ── Stats (populated on session complete + ready screen) ──
+    public PersonalBests? Bests;
+    public LifetimeStats? Lifetime;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -100,7 +104,7 @@ public sealed class GameRenderer : IDrawable
                 DrawReadyScreen(canvas, dirtyRect, ox, oy, cw, ch, scale);
                 return;
             case SessionState.Results when _s.LastResult is { } r:
-                DrawResultsScreen(canvas, dirtyRect, r);
+                DrawResultsScreen(canvas, dirtyRect, r, _s.Bests, _s.Lifetime);
                 return;
         }
 
@@ -183,19 +187,29 @@ public sealed class GameRenderer : IDrawable
         canvas.DrawString($"REFLEX GATES \u2014 {_s.GateCount} GATES",
             rect.Width * 0.5f, rect.Height * 0.45f, HorizontalAlignment.Center);
 
+        // Seed history teaser
+        if (_s.Bests?.SeedBestScore is { } seedBest)
+        {
+            canvas.FontSize = 11;
+            canvas.FontColor = NeonPalette.TextDim;
+            canvas.DrawString($"Best on this seed: {seedBest}",
+                rect.Width * 0.5f, rect.Height * 0.50f, HorizontalAlignment.Center);
+        }
+
         // Pulsing "PRESS START"
         float pulse = 0.4f + 0.6f * MathF.Abs(MathF.Sin((float)Environment.TickCount64 * 0.003f));
         canvas.FontSize = 18;
         canvas.FontColor = NeonPalette.Lime.WithAlpha(pulse);
         canvas.DrawString("PRESS START",
-            rect.Width * 0.5f, rect.Height * 0.56f, HorizontalAlignment.Center);
+            rect.Width * 0.5f, rect.Height * 0.58f, HorizontalAlignment.Center);
     }
 
     // ══════════════════════════════════════════════════════
     //  Results screen
     // ══════════════════════════════════════════════════════
 
-    private static void DrawResultsScreen(ICanvas canvas, RectF rect, SessionResult r)
+    private static void DrawResultsScreen(ICanvas canvas, RectF rect, SessionResult r,
+        PersonalBests? bests, LifetimeStats? lifetime)
     {
         // Dark overlay
         canvas.FillColor = NeonPalette.BgDeep.WithAlpha(0.92f);
@@ -246,9 +260,62 @@ public sealed class GameRenderer : IDrawable
         canvas.FontColor = NeonPalette.TextDim;
         canvas.DrawString("ACCURACY", cx, statsY + 70, HorizontalAlignment.Center);
 
+        // ── Personal bests comparison ───────────────────────
+        float pbY = statsY + 90;
+        if (bests != null && bests.BestScore > 0)
+        {
+            // Check for new records (compare against PB *before* this session was saved)
+            bool isNewOverallRecord = r.TotalScore >= bests.BestScore;
+            bool isNewSeedRecord = bests.SeedBestScore.HasValue
+                && r.TotalScore >= bests.SeedBestScore.Value;
+
+            if (isNewOverallRecord)
+            {
+                float recordPulse = 0.5f + 0.5f * MathF.Abs(MathF.Sin(
+                    (float)Environment.TickCount64 * 0.004f));
+                canvas.FontSize = 14;
+                canvas.FontColor = NeonPalette.Lime.WithAlpha(recordPulse);
+                canvas.DrawString("\u2605 NEW RECORD \u2605", cx, pbY, HorizontalAlignment.Center);
+                pbY += 18;
+            }
+            else
+            {
+                canvas.FontSize = 11;
+                canvas.FontColor = NeonPalette.TextDim;
+                canvas.DrawString($"PERSONAL BEST: {bests.BestScore}", cx, pbY,
+                    HorizontalAlignment.Center);
+                pbY += 16;
+            }
+
+            if (bests.SeedBestScore.HasValue)
+            {
+                if (isNewSeedRecord && !isNewOverallRecord)
+                {
+                    float seedPulse = 0.5f + 0.5f * MathF.Abs(MathF.Sin(
+                        (float)Environment.TickCount64 * 0.003f));
+                    canvas.FontSize = 12;
+                    canvas.FontColor = NeonPalette.Cyan.WithAlpha(seedPulse);
+                    canvas.DrawString("\u2605 SEED RECORD \u2605", cx, pbY,
+                        HorizontalAlignment.Center);
+                }
+                else if (!isNewSeedRecord)
+                {
+                    canvas.FontSize = 10;
+                    canvas.FontColor = NeonPalette.TextMuted;
+                    canvas.DrawString($"SEED BEST: {bests.SeedBestScore.Value}", cx, pbY,
+                        HorizontalAlignment.Center);
+                }
+            }
+            pbY += 18;
+        }
+        else
+        {
+            pbY += 10; // Small gap when no history yet
+        }
+
         // Per-gate breakdown
         canvas.FontSize = 11;
-        float gateY = statsY + 100;
+        float gateY = pbY;
         for (int i = 0; i < r.Gates.Count; i++)
         {
             var g = r.Gates[i];
@@ -260,10 +327,22 @@ public sealed class GameRenderer : IDrawable
             canvas.DrawString(label, cx, gateY + i * 17, HorizontalAlignment.Center);
         }
 
+        // Lifetime stats line + seed
+        float bottomY = rect.Height - 56;
+        if (lifetime != null && lifetime.TotalSessions > 0)
+        {
+            canvas.FontSize = 9;
+            canvas.FontColor = NeonPalette.TextMuted;
+            canvas.DrawString(
+                $"Session #{lifetime.TotalSessions}  |  Overall {lifetime.OverallAccuracy:0}%  |  {lifetime.UniqueSeedsPlayed} seeds",
+                cx, bottomY, HorizontalAlignment.Center);
+            bottomY += 14;
+        }
+
         // Seed
         canvas.FontSize = 10;
         canvas.FontColor = NeonPalette.TextMuted;
-        canvas.DrawString($"Seed: 0x{r.Seed:X8}", cx, rect.Height - 50, HorizontalAlignment.Center);
+        canvas.DrawString($"Seed: 0x{r.Seed:X8}", cx, bottomY, HorizontalAlignment.Center);
 
         // Pulsing footer
         float footerPulse = 0.3f + 0.5f * MathF.Abs(MathF.Sin(

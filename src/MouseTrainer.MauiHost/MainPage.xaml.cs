@@ -31,6 +31,9 @@ public partial class MainPage : ContentPage
     // --- Live gate results (for rendering pass/miss before session ends) ---
     private readonly List<GateResult> _liveGateResults = new(16);
 
+    // --- Persistence ---
+    private readonly SessionStore _store;
+
     private IDispatcherTimer? _timer;
     private long _frame;
     private uint _currentSeed = 0xC0FFEEu;
@@ -59,6 +62,7 @@ public partial class MainPage : ContentPage
 
         _sink = new MauiAudioSink(AudioManager.Current, log: AppendLog);
         _audio = new AudioDirector(AudioCueMap.Default(), _sink);
+        _store = new SessionStore(log: AppendLog);
 
         // Wire effects systems into renderer state
         _overlayState.Trail = _trailBuffer;
@@ -77,6 +81,7 @@ public partial class MainPage : ContentPage
         OverlayView.Invalidate();
 
         _ = VerifyAssetsAsync();
+        _ = LoadStatsAsync();
         AppendLog($"> Host started. FixedHz={_fixedHz}  Seed=0x{_currentSeed:X8}");
     }
 
@@ -237,6 +242,8 @@ public partial class MainPage : ContentPage
         _overlayState.Score = 0;
         _overlayState.Combo = 0;
         _overlayState.LastResult = null;
+        _overlayState.Bests = _store.GetPersonalBests(currentSeed: seed);
+        _overlayState.Lifetime = _store.GetLifetimeStats();
         PopulateGatesAtRest();
 
         ActionButton.Text = "Start";
@@ -391,6 +398,15 @@ public partial class MainPage : ContentPage
                 _overlayState.SessionPhase = SessionState.Results;
                 _overlayState.LastResult = _session.GetResult();
 
+                // Persist session + load PBs for results screen
+                if (_overlayState.LastResult is { } finalResult)
+                {
+                    // Get PBs *before* saving so "new record" detection works correctly
+                    _overlayState.Bests = _store.GetPersonalBests(currentSeed: _currentSeed);
+                    _overlayState.Lifetime = _store.GetLifetimeStats();
+                    _ = _store.SaveSessionAsync(finalResult);
+                }
+
                 ActionButton.Text = "Retry";
                 ActionButton.IsEnabled = true;
                 ActionButton.BackgroundColor = Color.FromArgb("#4CAF50");
@@ -442,6 +458,17 @@ public partial class MainPage : ContentPage
     // ------------------------------------------------------------------
     //  Assets
     // ------------------------------------------------------------------
+
+    private async Task LoadStatsAsync()
+    {
+        await _store.LoadAsync();
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _overlayState.Bests = _store.GetPersonalBests(currentSeed: _currentSeed);
+            _overlayState.Lifetime = _store.GetLifetimeStats();
+            OverlayView.Invalidate();
+        });
+    }
 
     private async Task VerifyAssetsAsync()
     {
