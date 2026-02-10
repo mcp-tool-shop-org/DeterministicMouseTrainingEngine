@@ -5,21 +5,25 @@ using MouseTrainer.Domain.Input;
 using MouseTrainer.Simulation.Core;
 using MouseTrainer.Simulation.Debug;
 using MouseTrainer.Simulation.Modes.ReflexGates;
+using MouseTrainer.Simulation.Session;
 
 namespace MouseTrainer.MauiHost;
 
 public partial class MainPage : ContentPage
 {
-    private readonly IGameSimulation _sim;
+    private readonly ReflexGateSimulation _sim;
     private readonly DeterministicLoop _loop;
     private readonly AudioDirector _audio;
+    private readonly SessionController _session = new();
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
 
     private readonly DebugOverlayState _overlayState = new();
     private readonly int _fixedHz = 60;
+    private readonly int _gateCount;
 
     private IDispatcherTimer? _timer;
     private long _frame;
+    private uint _currentSeed = 0xC0FFEEu;
 
     // --- Pointer state (sampled by host, consumed by sim) ---
     private float _latestX;
@@ -33,20 +37,30 @@ public partial class MainPage : ContentPage
     {
         InitializeComponent();
 
-        _sim = new ReflexGateSimulation(new ReflexGateConfig());
+        var cfg = new ReflexGateConfig();
+        _gateCount = cfg.GateCount;
+        _sim = new ReflexGateSimulation(cfg);
         _loop = new DeterministicLoop(_sim, new DeterministicConfig
         {
             FixedHz = _fixedHz,
             MaxStepsPerFrame = 6,
-            SessionSeed = 0xC0FFEEu
+            SessionSeed = _currentSeed
         });
 
         _audio = new AudioDirector(AudioCueMap.Default(), new LogAudioSink(AppendLog));
 
         OverlayView.Drawable = new DebugOverlayDrawable(_overlayState);
         AttachPointerInput();
+
+        // Initialize session to Ready
+        _session.ResetToReady(_currentSeed, _gateCount);
+        _overlayState.SessionPhase = SessionState.Ready;
+        _overlayState.Seed = _currentSeed;
+        SeedLabel.Text = $"Seed: 0x{_currentSeed:X8}";
+        OverlayView.Invalidate();
+
         _ = VerifyAssetsAsync();
-        AppendLog($"> Host started. FixedHz={_fixedHz}");
+        AppendLog($"> Host started. FixedHz={_fixedHz}  Seed=0x{_currentSeed:X8}");
     }
 
     // ------------------------------------------------------------------
@@ -124,66 +138,138 @@ public partial class MainPage : ContentPage
         => new PointerInput(_latestX, _latestY, _primaryDown, false, _stopwatch.ElapsedTicks);
 
     // ------------------------------------------------------------------
-    //  Simulation loop
+    //  Session flow: Ready → Playing → Results
     // ------------------------------------------------------------------
 
-    private void OnStartClicked(object sender, EventArgs e)
+    private void OnActionClicked(object sender, EventArgs e)
     {
-        if (_timer is not null) return;
+        switch (_session.State)
+        {
+            case SessionState.Ready:
+                StartSession();
+                break;
+
+            case SessionState.Playing:
+                // No manual stop — session ends at LevelComplete
+                break;
+
+            case SessionState.Results:
+                // Retry with same seed
+                ResetSession(_currentSeed);
+                StartSession();
+                break;
+        }
+    }
+
+    private void OnNewSeedClicked(object sender, EventArgs e)
+    {
+        StopTimer();
+        _currentSeed = (uint)Environment.TickCount;
+        ResetSession(_currentSeed);
+    }
+
+    private void StartSession()
+    {
+        _loop.Reset(_currentSeed);
+        _session.ResetToReady(_currentSeed, _gateCount);
+        _session.Start();
+
+        _frame = 0;
 
         _timer = Dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
         _timer.Tick += (_, _) => StepOnce();
         _timer.Start();
 
-        StartButton.IsEnabled = false;
-        StopButton.IsEnabled = true;
-        StatusLabel.Text = "Running";
+        _overlayState.SessionPhase = SessionState.Playing;
+        _overlayState.Score = 0;
+        _overlayState.Combo = 0;
+        _overlayState.HasGate = false;
+        _overlayState.LastResult = null;
+
+        ActionButton.Text = "Playing...";
+        ActionButton.IsEnabled = false;
+        ActionButton.BackgroundColor = Color.FromArgb("#666666");
+        StatusLabel.Text = "Playing";
         StatusLabel.TextColor = Color.FromArgb("#4CAF50");
 
-        AppendLog("> Loop started.");
+        AppendLog($"> Session started. Seed=0x{_currentSeed:X8}");
     }
 
-    private void OnStopClicked(object sender, EventArgs e)
+    private void ResetSession(uint seed)
+    {
+        StopTimer();
+
+        _currentSeed = seed;
+        _session.ResetToReady(seed, _gateCount);
+
+        _overlayState.SessionPhase = SessionState.Ready;
+        _overlayState.Seed = seed;
+        _overlayState.Score = 0;
+        _overlayState.Combo = 0;
+        _overlayState.HasGate = false;
+        _overlayState.LastResult = null;
+
+        ActionButton.Text = "Start";
+        ActionButton.IsEnabled = true;
+        ActionButton.BackgroundColor = Color.FromArgb("#4CAF50");
+        StatusLabel.Text = "Ready";
+        StatusLabel.TextColor = Color.FromArgb("#888888");
+        SeedLabel.Text = $"Seed: 0x{seed:X8}";
+
+        OverlayView.Invalidate();
+        AppendLog($"> Reset. Seed=0x{seed:X8}");
+    }
+
+    private void StopTimer()
     {
         if (_timer is null) return;
-
         _timer.Stop();
         _timer = null;
-
-        StartButton.IsEnabled = true;
-        StopButton.IsEnabled = false;
-        StatusLabel.Text = "Stopped";
-        StatusLabel.TextColor = Color.FromArgb("#888888");
-
-        AppendLog("> Loop stopped.");
     }
 
-    private void OnClearClicked(object sender, EventArgs e)
-    {
-        LogLabel.Text = "";
-    }
+    // ------------------------------------------------------------------
+    //  Simulation loop
+    // ------------------------------------------------------------------
 
     private void StepOnce()
     {
+        if (_session.State != SessionState.Playing) return;
+
         var input = SamplePointer();
         var nowTicks = _stopwatch.ElapsedTicks;
         var result = _loop.Step(input, nowTicks, Stopwatch.Frequency);
 
-        // Drive audio from events
+        // Process events through session controller + audio
         if (result.Events.Count > 0)
-            _audio.Process(result.Events, result.Tick, sessionSeed: 0xC0FFEEu);
-
-        // Update overlay state
-        _overlayState.Tick = result.Tick;
-
-        // Pull score/combo from sim if it exposes them
-        if (_sim is ReflexGateSimulation rgs)
         {
-            _overlayState.Score = rgs.TotalScore;
-            _overlayState.Combo = rgs.ComboStreak;
-            _overlayState.LevelComplete = rgs.IsLevelComplete;
+            bool transitioned = _session.ApplyEvents(result.Events);
+            _audio.Process(result.Events, result.Tick, sessionSeed: _currentSeed);
+
+            if (transitioned)
+            {
+                // Session complete — stop the loop, show results
+                StopTimer();
+
+                _overlayState.SessionPhase = SessionState.Results;
+                _overlayState.LastResult = _session.GetResult();
+
+                ActionButton.Text = "Retry";
+                ActionButton.IsEnabled = true;
+                ActionButton.BackgroundColor = Color.FromArgb("#4CAF50");
+                StatusLabel.Text = "Complete";
+                StatusLabel.TextColor = Color.FromArgb("#FFD700");
+
+                OverlayView.Invalidate();
+                AppendLog($"> Session complete! Score={_session.TotalScore}  MaxCombo={_session.MaxCombo}  Time={_session.Elapsed.TotalSeconds:0.0}s");
+                return;
+            }
         }
+
+        // Update overlay state from session controller
+        _overlayState.Tick = result.Tick;
+        _overlayState.Score = _session.TotalScore;
+        _overlayState.Combo = _session.CurrentCombo;
 
         // Gate preview via optional debug interface
         float simTime = result.Tick * (1f / _fixedHz);
@@ -206,7 +292,7 @@ public partial class MainPage : ContentPage
             OverlayView.Invalidate();
 
         if (_frame % 60 == 0)
-            AppendLog($"> tick={result.Tick} Y={_latestY:0} score={_overlayState.Score} combo={_overlayState.Combo}");
+            AppendLog($"> tick={result.Tick} Y={_latestY:0} score={_session.TotalScore} combo={_session.CurrentCombo}");
     }
 
     // ------------------------------------------------------------------

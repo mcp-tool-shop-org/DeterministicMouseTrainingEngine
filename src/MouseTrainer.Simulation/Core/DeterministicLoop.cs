@@ -40,6 +40,18 @@ public sealed class DeterministicLoop
     }
 
     /// <summary>
+    /// Reset with an explicit seed, bypassing DeterministicConfig.SessionSeed.
+    /// Used for retry/new-seed session flows.
+    /// </summary>
+    public void Reset(uint seed)
+    {
+        _tick = 0;
+        _accumulatorSeconds = 0;
+        _lastHostTicks = 0;
+        _sim.Reset(seed);
+    }
+
+    /// <summary>
     /// Step using host-provided input and time.
     /// </summary>
     /// <param name="input">Latest sampled pointer input.</param>
