@@ -11,7 +11,7 @@
     <!-- Keep this host intentionally tiny: no XAML compilation tricks, no extra packages -->
     <ApplicationTitle>Mouse Trainer (Deterministic Host)</ApplicationTitle>
     <ApplicationId>com.mcptoolshop.mousetrainer</ApplicationId>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
     <NoWarn>$(NoWarn);CA1051;CA1001</NoWarn>
     <WindowsPackageType>None</WindowsPackageType>

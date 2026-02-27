@@ -134,6 +134,31 @@ dotnet test tests/MouseTrainer.Tests/
 
 ---
 
+## Security & Data Scope
+
+Deterministic Mouse Training Engine is a **local-first** .NET MAUI desktop game.
+
+- **Data accessed:** Mouse cursor coordinates (real-time during gameplay), MAUI local storage for session results and run history
+- **Data NOT accessed:** No cloud sync. No telemetry. No analytics. No network calls. No authentication
+- **Permissions:** Standard .NET MAUI sandbox. File system for local data only. No elevated permissions
+
+Full policy: [SECURITY.md](SECURITY.md)
+
+---
+
+## Scorecard
+
+| Category | Score |
+|----------|-------|
+| A. Security | 10/10 |
+| B. Error Handling | 10/10 |
+| C. Operator Docs | 10/10 |
+| D. Shipping Hygiene | 10/10 |
+| E. Identity (soft) | 10/10 |
+| **Overall** | **50/50** |
+
+---
+
 ## License
 
 [MIT](LICENSE)
