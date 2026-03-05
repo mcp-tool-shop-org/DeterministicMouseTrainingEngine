@@ -14,7 +14,7 @@ export const config: SiteConfig = {
     headlineAccent: 'Training Engine',
     description: 'A fully deterministic simulation engine for mouse dexterity training. Fixed timestep, composable blueprint mutators, platform-stable run identity, and replay verification — built on .NET 8 MAUI.',
     primaryCta: { href: '#architecture', label: 'Explore' },
-    secondaryCta: { href: 'https://github.com/mcp-tool-shop-org/DeterministicMouseTrainingEngine', label: 'Source' },
+    secondaryCta: { href: 'handbook/', label: 'Read the Handbook' },
     previews: [
       { label: 'Determinism', code: 'Same seed → same simulation → same score' },
       { label: 'Identity', code: 'FNV-1a(seed + mode + mutators) = RunId' },
